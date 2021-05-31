@@ -75,6 +75,42 @@ function patch_to_avoid_strtod() {
   mv ${temp_flexbuffers_path} ${input_flexbuffers_path}
 }
 
+# Parameter(s):
+#   $1 - full path to the downloaded flexbuffers.h that will be patched in-place.
+function patch_expression() {
+  local input_flexbuffers_path="$1"
+  local length=1
+  local temp_flexbuffers_path="$(mktemp)"
+  local string_to_num_line=`awk '/type_ = static_cast<Type>\(packed_type >> 2\);/{ print NR; }' ${input_flexbuffers_path}`
+  local case_string_line=$((${string_to_num_line} - 1))
+  local line_offset=${length}-1
+
+  head -n ${case_string_line} ${input_flexbuffers_path} > ${temp_flexbuffers_path}
+
+  echo "#if 1" >> ${temp_flexbuffers_path}
+  echo "  // TODO(b/): Patched via micro/tools/make/flexbuffers_download.sh" >> ${temp_flexbuffers_path}
+  cat <<EOF>> ${temp_flexbuffers_path}
+    uint8_t type = static_cast<Type>(packed_type >> 2);
+    switch (type) {
+    case FBT_INT: type_ = FBT_INT; break;
+    case FBT_FLOAT: type_ = FBT_FLOAT; break;
+    case FBT_BOOL: type_ = FBT_BOOL; break;
+    case FBT_MAP: type_ = FBT_MAP; break;
+    }
+EOF
+  echo "#else" >> ${temp_flexbuffers_path}
+  echo "  // This is the original code" >> ${temp_flexbuffers_path}
+  sed -n -e $((${string_to_num_line})),$((${string_to_num_line} + ${line_offset}))p ${input_flexbuffers_path} >> ${temp_flexbuffers_path}
+  echo "#endif" >> ${temp_flexbuffers_path}
+
+  local total_num_lines=`wc -l ${input_flexbuffers_path} | awk '{print $1}'`
+  sed -n -e $((${string_to_num_line} + ${length})),${total_num_lines}p ${input_flexbuffers_path} >> ${temp_flexbuffers_path}
+  mv ${input_flexbuffers_path} ${input_flexbuffers_path}.orig
+  mv ${temp_flexbuffers_path} ${input_flexbuffers_path}
+}
+
+
+
 # The BUILD files in the downloaded folder result in an error with:
 #  bazel build tensorflow/lite/micro/...
 #
@@ -104,6 +140,8 @@ else
   rm -rf "${TEMPDIR}"
 
   patch_to_avoid_strtod ${DOWNLOADED_FLATBUFFERS_PATH}/include/flatbuffers/flexbuffers.h
+  patch_expression ${DOWNLOADED_FLATBUFFERS_PATH}/include/flatbuffers/flexbuffers.h
+
   delete_build_files ${DOWNLOADED_FLATBUFFERS_PATH}
 fi
 
