@@ -115,3 +115,9 @@ jobs:
       pr-body: ${{ github.event.pull_request.body }}
     secrets:
       tflm-bot-token: ${{ secrets.TFLM_BOT_PACKAGE_READ_TOKEN }}
+
+  call-cortex-m-virtual-hardware:
+    needs: ci-run
+    uses: ./.github/workflows/cortex_m_virtual_hardware.yml
+    with:
+      trigger-sha: ${{ github.event.pull_request.head.sha }}
